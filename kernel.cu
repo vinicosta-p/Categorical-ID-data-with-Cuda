@@ -19,27 +19,30 @@
 #include <vector>
 
 #define LIN 1000
-#define COL 26
-#define DIC 200
+#define COL_NUM_DATA 15
+#define COL_CAT_DATA 11
 
 typedef struct {
-    char d[50];
+    char d[256];
 } dado;
 
-dado matrizDeDados[LIN][COL];
+dado numericos[LIN][COL_NUM_DATA];
+dado categoricos[LIN][COL_CAT_DATA];
 
 typedef struct {
-    int numThread;
+    int id;
+    int numDaMenorLinha;
     char d[50];
-} dicionario;
+} mapa;
 
-dicionario dic[DIC][COL];
+mapa dic[1000][COL_CAT_DATA];
+
 
 using namespace std;
 
 vector<string> nomesArquivos = { "cdtup.csv", "berco.csv", "portoatracacao.csv", "mes.csv", "tipooperacao.csv",
         "tiponavegacaoatracacao.csv", "terminal.csv", "origem.csv", "destino.csv", "naturezacarga.csv", "sentido.csv" };
-map<string, int> idxColuna;
+map<int, string> idxColuna;
 
 fstream arquivoPrincipal;
 
@@ -49,13 +52,9 @@ bool fimDoArq = false;
 
 void criarMapComNomeDaColunaAndPosicao();
 
-int geraMatriz(dado[][COL]);
+int geraMatriz();
 
-void imprimeMatriz(dado[][COL]);
-
-void initMatriz(dado[][COL]);
-
-void exportaMatriz(dado[][COL]);
+void exportaMatriz();
 
 void limpaArquivo() {
     for (int i = 0; i < nomesArquivos.size(); ++i) {
@@ -67,18 +66,14 @@ void limpaArquivo() {
 };
 
 void linhaInicial() {
-    fstream arquivo;
     string linha;
+    fstream arquivo;
 
-    arquivo.open("dataset_00_1000_sem_virg.csv", fstream::in);
+    getline(arquivoPrincipal, linha);
 
-    getline(arquivo, linha);
+    arquivo.open("saida.csv", fstream::app);
 
-    arquivo.close();
-
-    arquivo.open("saida.csv", fstream::out);
-
-    arquivo << linha;
+    arquivo << linha << endl;
 
     arquivo.close();
 
@@ -87,13 +82,22 @@ void linhaInicial() {
 __global__ 
 void parallelCodeAndKey(dado *mainDados,dado *copyDados, int lin, int col) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < LIN + COL) {
+    if (i < LIN + COL_NUM_DATA) {
         copyDados[i] = mainDados[i];
     }
     mainDados[i].d;
 
 }
 
+__global__
+void insercaoDeDados(dado* mainDados, dado* copyDados, int lin, int col) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < LIN + COL_NUM_DATA) {
+        copyDados[i] = mainDados[i];
+    }
+    mainDados[i].d;
+
+}
 
 
 int main()
@@ -102,20 +106,22 @@ int main()
 
     criarMapComNomeDaColunaAndPosicao();
 
-    linhaInicial();
-
     arquivoPrincipal.open("dataset_00_1000_sem_virg.csv", fstream::in);
 
     if (arquivoPrincipal.is_open() == false) {
         perror("Erro ao abrir o arquivo");
         return 1;
     }
-    geraMatriz(matrizDeDados);
+
+    linhaInicial();
+
+    
+    geraMatriz();
     /*
     dado* d_matrizDeDados, * d_copyDados;
     dado* copyDados;
 
-    for (int i = 0; i < 1; i++) {
+    while(fimDoArq) {
         
         copyDados = (dado*)malloc(sizeof(dado) * LIN * COL);
         
@@ -136,7 +142,7 @@ int main()
     }
     */
     
-    exportaMatriz(matrizDeDados);
+    exportaMatriz();
 
     arquivoPrincipal.close();
 
@@ -147,58 +153,82 @@ int main()
 
 void criarMapComNomeDaColunaAndPosicao() {
     vector<int> numeroDaColuna = { 1, 2, 3, 5, 6, 7, 8, 17, 18, 20, 23 };
+    //788883, BRCDO, 101, Cabedelo, 2016, ago, Marinha, "Apoio Portuário", "Cais Público", 0, 0, 0, 20, 0, 20, 20, 17880751, BRIQI, BRCDO, 2710, "Granel Líquido e Gasoso", 0, 2000, Desembarcados, "", 0
     int numColum = 0;
     for (int i = 0; i < nomesArquivos.size(); ++i) {
-        idxColuna.insert(pair<string, int>(nomesArquivos[i], numeroDaColuna[numColum]));
+        
+        idxColuna.insert(pair<int, string>(numeroDaColuna[numColum], nomesArquivos[i]));
         numColum++;
     }
 
 }
 
-int geraMatriz(dado matriz[][COL]) {
+int geraMatriz() {
+    
+    int colunaNumerica = 0;
+    int colunaCategorica = 0;
 
     int numLinhas;
-
+    std::string valor;
     for (numLinhas = 0; numLinhas < LIN; numLinhas++) {
-        for (int j = 0; j < COL; j++) {
-            std::string valor;
+        for (int numColum = 0; numColum < (COL_CAT_DATA + COL_NUM_DATA); numColum++) {
+            
             if (!getline(arquivoPrincipal, valor, ',')) {
                 fimDoArq = true;
                 return numLinhas;
             };
-            strncpy(matriz[numLinhas][j].d, valor.c_str(), valor.size());
+            
+            valor.append(",");
+
+            if(idxColuna.find(numColum) == idxColuna.end()){
+                strncpy(numericos[numLinhas][colunaNumerica].d, valor.c_str(), valor.size());
+                
+                colunaNumerica++;
+                
+            }
+            else
+            {
+                strncpy(categoricos[numLinhas][colunaCategorica].d, valor.c_str(), valor.size());
+                
+               
+
+                colunaCategorica++;
+            }
+            valor.clear();
         }
+        colunaNumerica = 0;
+        colunaCategorica = 0;
     }
     return numLinhas;
 }
 
-void exportaMatriz(dado matriz[][COL]) {
-    FILE* saida = fopen("saida.csv", "w");
-    for (int i = 0; i < LIN; i++) {
-        for (int j = 0; j < COL; j++) {
-            fprintf(saida, "%s", matriz[i][j].d);
-        }
-    }
-    fclose(saida);
-}
+void exportaMatriz() {
+    int colunaNumerica = 0;
+    int colunaCategorica = 0;
+    fstream saida;
+    saida.open("saida.csv", fstream::app);
 
-void imprimeMatriz(dado matriz[][COL]) {
     for (int i = 0; i < LIN; i++) {
-        printf("Linha %i: ", i + 1);
-        for (int j = 0; j < COL; j++) {
-            printf("%s ", matriz[i][j].d);
-        }
-        printf("\n\n");
-    }
-}
+        for (int j = 0; j < (COL_NUM_DATA + COL_CAT_DATA); j++) {
+            if (idxColuna.find(j) == idxColuna.end()) {
+                saida << numericos[i][colunaNumerica].d;
+                //if (i == 0) printf("%s\n", numericos[i][colunaNumerica].d);
+                colunaNumerica++;
+            }
+            else
+            {
+                saida << categoricos[i][colunaCategorica].d;
+                //if (i == 0) printf("%s\n", categoricos[i][colunaCategorica].d);
+                colunaCategorica++;
 
-void initMatriz(dado matriz[][COL]) {
-    for (int i = 0; i < LIN; i++) {
-        for (int j = 0; j < COL; j++) {
-            for (int k = 0; k < 50; k++) {
-                matriz[i][j].d[k] = 0;
             }
         }
-        printf("\n\n");
+        colunaNumerica = 0;
+        colunaCategorica = 0;
     }
+    if (fimDoArq) {
+        saida << "0\n";
+    }
+
+    saida.close();
 }
