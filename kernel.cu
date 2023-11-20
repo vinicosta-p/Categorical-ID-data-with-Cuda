@@ -18,7 +18,8 @@
 #include <sstream>
 #include <vector>
 
-#define LIN 1000
+#define LIN 1002
+#define MAX_LIN_DIC 200;
 #define COL_NUM_DATA 15
 #define COL_CAT_DATA 11
 
@@ -32,10 +33,8 @@ dado categoricos[LIN][COL_CAT_DATA];
 typedef struct {
     int id;
     int numDaMenorLinha;
-    char d[50];
+    char d[256];
 } mapa;
-
-mapa dic[1000][COL_CAT_DATA];
 
 
 using namespace std;
@@ -48,7 +47,7 @@ fstream arquivoPrincipal;
 
 int NUM_LINHAS_LIDAS = 0;
 
-bool fimDoArq = false;
+bool fimDoArq = true;
 
 void criarMapComNomeDaColunaAndPosicao();
 
@@ -80,24 +79,29 @@ void linhaInicial() {
 }
 
 __global__ 
-void parallelCodeAndKey(dado *mainDados,dado *copyDados, int lin, int col) {
+void criacaoDeDicionario(dado *mainDados, mapa* dicDados, int lin, int col) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < LIN + COL_NUM_DATA) {
-        copyDados[i] = mainDados[i];
+    if (i < (col * 200)) {
+        int posChar = 0;
+        for (posChar; mainDados[i].d[posChar] != '\0'; posChar++) {
+            dicDados[i].d[posChar] = mainDados[i].d[posChar];
+        }
+        dicDados[i].d[posChar] = '\0';
+        dicDados[i].numDaMenorLinha = i;
+        
     }
-    mainDados[i].d;
-
 }
-
+/*
 __global__
-void insercaoDeDados(dado* mainDados, dado* copyDados, int lin, int col) {
+void insercaoDeDados(dado* mainDados, mapa* copyDados, int lin, int col) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < LIN + COL_NUM_DATA) {
+    if (i < COL_CAT_DATA) {
         copyDados[i] = mainDados[i];
     }
     mainDados[i].d;
 
 }
+*/
 
 
 int main()
@@ -114,33 +118,31 @@ int main()
     }
 
     linhaInicial();
+   
+    dado * d_categoricos;
+    mapa * dicDados, * d_dicDados;
 
-    
-    geraMatriz();
-    /*
-    dado* d_matrizDeDados, * d_copyDados;
-    dado* copyDados;
+    dicDados = (mapa*)malloc(sizeof(mapa) * COL_CAT_DATA * 200);
 
     while(fimDoArq) {
-        
-        copyDados = (dado*)malloc(sizeof(dado) * LIN * COL);
-        
-        cudaMalloc((void**)&d_matrizDeDados, sizeof(dado) * LIN * COL);
-        cudaMalloc((void**)&d_copyDados, sizeof(dado) * LIN * COL);
 
-        cudaMemcpy(d_matrizDeDados, matrizDeDados, sizeof(dado) * LIN * COL, cudaMemcpyHostToDevice);
+        geraMatriz();
 
-        parallelCodeAndKey << <COL, LIN >> > (d_matrizDeDados, d_copyDados, LIN, COL);
+        cudaMalloc((void**)&d_categoricos, sizeof(dado) * LIN * COL_CAT_DATA);
+        cudaMalloc((void**)&d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200);
 
-        cudaMemcpy(copyDados, d_copyDados, sizeof(dado) * LIN * COL, cudaMemcpyDeviceToHost);
+        cudaMemcpy(d_categoricos, categoricos, sizeof(dado) * LIN * COL_CAT_DATA, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyHostToDevice);
 
-        //printf("%s\n", copyDados[26]);
+        criacaoDeDicionario << <COL_CAT_DATA, LIN >> > (d_categoricos, d_dicDados, LIN, COL_CAT_DATA);
+
+        cudaMemcpy(dicDados, d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
+
+        printf("%d\n", dicDados[0].numDaMenorLinha);
        
-        cudaFree(d_copyDados);
-        cudaFree(d_matrizDeDados);
-        free(copyDados);
+        cudaFree(d_categoricos);
+        cudaFree(d_dicDados);
     }
-    */
     
     exportaMatriz();
 
@@ -174,7 +176,7 @@ int geraMatriz() {
         for (int numColum = 0; numColum < (COL_CAT_DATA + COL_NUM_DATA); numColum++) {
             
             if (!getline(arquivoPrincipal, valor, ',')) {
-                fimDoArq = true;
+                fimDoArq = false;
                 return numLinhas;
             };
             
