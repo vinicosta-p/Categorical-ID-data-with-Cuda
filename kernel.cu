@@ -78,17 +78,38 @@ void linhaInicial() {
 
 }
 
+__device__  bool cudastrcmp(char s1[256], char s2[256]) {
+    int posChar = 0;
+    while (s1[posChar] == s2[posChar]) {
+        if (s1[posChar] == '\0' && s2[posChar] == '\0') {
+            return true;
+        }
+        posChar++;
+    }
+    return false;
+}
+
 __global__ 
 void criacaoDeDicionario(dado *mainDados, mapa* dicDados, int lin, int col) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < (col * 200)) {
-        int posChar = 0;
-        for (posChar; mainDados[i].d[posChar] != '\0'; posChar++) {
-            dicDados[i].d[posChar] = mainDados[i].d[posChar];
+        /*
+        // busca no dicionario
+        for (int varreDicio = 0; varreDicio < (col * 200); varreDicio++) {
+            bool trocaNoDicionario = dicDados[varreDicio].d == NULL || cudastrcmp(dicDados[varreDicio].d, mainDados[i].d) == 0;
+
+            if(dicDados[varreDicio].d == NULL || dicDados) {
+                // escrita no dicionario
+                int posChar = 0;
+                for (posChar; mainDados[i].d[posChar] != '\0'; posChar++) {
+                    dicDados[i].d[posChar] = mainDados[i].d[posChar];
+                }
+                dicDados[i].d[posChar] = '\0';
+
+                dicDados[i].numDaMenorLinha = i;
+            }
         }
-        dicDados[i].d[posChar] = '\0';
-        dicDados[i].numDaMenorLinha = i;
-        
+        */
     }
 }
 /*
@@ -138,7 +159,7 @@ int main()
 
         cudaMemcpy(dicDados, d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
 
-        printf("%d\n", dicDados[0].numDaMenorLinha);
+        printf("%s %d\n", dicDados[1].d, dicDados[1].numDaMenorLinha);
        
         cudaFree(d_categoricos);
         cudaFree(d_dicDados);
