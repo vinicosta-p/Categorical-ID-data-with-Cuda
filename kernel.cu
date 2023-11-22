@@ -208,6 +208,7 @@ int main()
     while(fimDoArq) {
         
         QNTD_LINHAS_LIDAS = geraMatriz();
+        //printf("%d\n", QNTD)
         cudaMalloc((void**)&d_categoricos, sizeof(dado) * LIN * COL_CAT_DATA);
         
         cudaMalloc((void**)&d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200);
@@ -216,7 +217,7 @@ int main()
         
         cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyHostToDevice);
       
-        insercaoDeDados << <COL_CAT_DATA, LIN >> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
+        insercaoDeDados << <QNTD_LINHAS_LIDAS, COL_CAT_DATA>> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
 
         cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
 
@@ -247,14 +248,14 @@ void exportaMatriz(int maxLinhas) {
     for (int i = 0; i < maxLinhas; i++) {
         for (int j = 0; j < (COL_NUM_DATA + COL_CAT_DATA); j++) {
             if (idxColuna.find(j) != idxColuna.end()) {
-                saida << categoricos[i][colunaCategorica].d << ',';
-                // printf("%s\n", categoricos[i][colunaCategorica].d);
+                saida << to_string(categoricos[i][colunaCategorica].id) << ',';
+                //if(categoricos[i][colunaCategorica].id == 0) printf("%d\n", i);
                 colunaCategorica++;
             }
             else
             {
                 saida << numericos[i][colunaNumerica].d << ',';
-                if(i == 0) printf("%d %s\n", j, numericos[i][colunaNumerica].d);
+               // if(i == 0) printf("%d %s\n", j, numericos[i][colunaNumerica].d);
                 colunaNumerica++;
 
             }
