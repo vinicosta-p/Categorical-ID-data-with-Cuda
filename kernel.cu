@@ -51,6 +51,11 @@ int NUM_LINHAS_LIDAS = 0;
 
 bool fimDoArq = true;
 
+vector<map<string, int>> buscaRapidaDeDado;
+
+
+void pairCodigoDescricao(string nomeArquivo, int indexDaColuna, int numLinhasLidas);
+
 void criarMapComNomeDaColunaAndPosicao() {
     vector<int> numeroDaColuna = { 0, 1, 2, 4, 5, 6, 7, 16, 17, 19, 22 };
     //788883, BRCDO, 101, Cabedelo, 2016, ago, Marinha, "Apoio Portuário", "Cais Público", 0, 0, 0, 20, 0, 20, 20, 17880751, BRIQI, BRCDO, 2710, "Granel Líquido e Gasoso", 0, 2000, Desembarcados, "", 0
@@ -142,30 +147,6 @@ __device__  bool cudastrcmp(char s1[256], char s2[256]) {
     }
     return false;
 }
-
-__global__ 
-void criacaoDeDicionario(dado *mainDados, mapa* dicDados, int lin, int col) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < (col * 200)) {
-     
-        // busca no dicionario
-        for (int varreDicio = 0; varreDicio < (col * 200); varreDicio++) {
-            
-            bool trocaNoDicionario = cudastrcmp(dicDados[varreDicio].d, mainDados[i].d) && dicDados[varreDicio].numDaMenorLinha > i || dicDados[varreDicio].d[0] == '\0';
-
-            if(trocaNoDicionario) {
-                // escrita no dicionario
-                int posChar = 0;
-                for (posChar; mainDados[i].d[posChar] != '\0'; posChar++) {
-                    dicDados[varreDicio].d[posChar] = mainDados[i].d[posChar];
-                }
-                dicDados[varreDicio].d[posChar] = '\0';
-                dicDados[varreDicio].numDaMenorLinha = i;
-                break;
-            }
-        }
-    }
-}
 */
 __global__
 void insercaoDeDados(dado* mainDados, mapa* dicDados, int lin, int col) {
@@ -176,6 +157,12 @@ void insercaoDeDados(dado* mainDados, mapa* dicDados, int lin, int col) {
 
 }
 
+void inicializaMatriz_buscaRapidaDeDado() {
+    for (int i = 0; i < nomesArquivos.size(); ++i) {
+        map<string, int> aux; //= { nomesArquivos[i], "0" };
+        buscaRapidaDeDado.push_back(aux);
+    }
+}
 
 
 int main()
@@ -192,6 +179,10 @@ int main()
     }
 
     linhaInicial();
+
+    inicializaMatriz_buscaRapidaDeDado();
+    
+
    
     dado * d_categoricos, * d_newCategoricos;
     mapa * d_dicDados;
@@ -208,7 +199,11 @@ int main()
     while(fimDoArq) {
         
         QNTD_LINHAS_LIDAS = geraMatriz();
-        //printf("%d\n", QNTD)
+       
+        for (int i = 0; i < nomesArquivos.size(); ++i) {
+            pairCodigoDescricao(nomesArquivos[i], i, QNTD_LINHAS_LIDAS);
+        }
+        
         cudaMalloc((void**)&d_categoricos, sizeof(dado) * LIN * COL_CAT_DATA);
         
         cudaMalloc((void**)&d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200);
@@ -221,7 +216,7 @@ int main()
 
         cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
 
-        printf("%s %d\n", categoricos[0][0].d, categoricos[0][0].id);
+        //printf("%s %d\n", categoricos[0][0].d, categoricos[0][0].id);
         
         exportaMatriz(QNTD_LINHAS_LIDAS);
         cudaFree(d_categoricos);
@@ -246,7 +241,7 @@ void exportaMatriz(int maxLinhas) {
     saida.open("saida.csv", fstream::app);
 
     for (int i = 0; i < maxLinhas; i++) {
-        for (int j = 0; j < (COL_NUM_DATA + COL_CAT_DATA); j++) {
+        for (int j = 0; j < COL_CAT_DATA + COL_NUM_DATA; j++) {
             if (idxColuna.find(j) != idxColuna.end()) {
                 saida << to_string(categoricos[i][colunaCategorica].id) << ',';
                 //if(categoricos[i][colunaCategorica].id == 0) printf("%d\n", i);
@@ -270,4 +265,49 @@ void exportaMatriz(int maxLinhas) {
     */
 
     saida.close();
+}
+// se está no map ele devolve falso se não verdadeiro
+bool procuraNoCache(int indexDoArquivo, string dado) {
+    bool naoVectorEstaVazio = !buscaRapidaDeDado[indexDoArquivo].empty();
+    if (naoVectorEstaVazio) {
+        if (buscaRapidaDeDado[indexDoArquivo].find(dado) != buscaRapidaDeDado[indexDoArquivo].end()) {
+            return false;
+        };
+    }
+    return true;
+}
+
+
+void pairCodigoDescricao(string nomeArquivo, int indexDaColuna, int numLinhasLidas) {
+    std::fstream arquivo;
+    
+    arquivo.open(nomeArquivo, fstream::app);
+    
+    int linhaDicionario = buscaRapidaDeDado[indexDaColuna].size(); // algoritmo para saber a linha do dicionario
+    
+    for (int linha = 0;linha < numLinhasLidas; linha++) {
+    
+        string dado = categoricos[linha][indexDaColuna].d;
+
+        if (procuraNoCache(indexDaColuna, dado)) {
+            
+            int ultimoIndex = buscaRapidaDeDado[indexDaColuna].size() + 1;
+            
+            buscaRapidaDeDado[indexDaColuna][dado] = ultimoIndex;
+            
+            arquivo << to_string(ultimoIndex) << "," << dado << endl;
+
+            strncpy(dicDados[linhaDicionario][indexDaColuna].d, dado.c_str(), dado.size());
+            
+            dicDados[linhaDicionario][indexDaColuna].id = ultimoIndex;
+            
+            linhaDicionario++;
+           
+        }
+        
+
+    }
+    
+    arquivo.close();
+
 }
