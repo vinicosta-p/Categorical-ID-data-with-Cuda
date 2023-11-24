@@ -136,7 +136,7 @@ void linhaInicial() {
     arquivo.close();
 
 }
-/*
+
 __device__  bool cudastrcmp(char s1[256], char s2[256]) {
     int posChar = 0;
     while (s1[posChar] == s2[posChar]) {
@@ -147,12 +147,27 @@ __device__  bool cudastrcmp(char s1[256], char s2[256]) {
     }
     return false;
 }
-*/
+/**/
 __global__
 void insercaoDeDados(dado* mainDados, mapa* dicDados, int lin, int col) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int colum = (index % col);
     if (index < (lin*col)) {
-        mainDados[index].id = 2;
+        for (int i = 0; i < 200; i++) {
+            if (dicDados[colum + (col * i)].id == 0) {
+                break;
+            }
+
+            if (cudastrcmp(dicDados[colum + (col*i)].d, mainDados[index].d)) {
+                mainDados[index].id = dicDados[colum + (col * i)].id;
+                break;
+            }
+
+           
+
+        }
+
+       // mainDados[index].id = colum;
     }
 
 }
@@ -212,7 +227,7 @@ int main()
         
         cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyHostToDevice);
       
-        insercaoDeDados << <QNTD_LINHAS_LIDAS, COL_CAT_DATA>> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
+        insercaoDeDados << <QNTD_LINHAS_LIDAS, COL_CAT_DATA >> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
 
         cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
 
