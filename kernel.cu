@@ -19,7 +19,6 @@
 #include <vector>
 
 #define LIN 1002
-#define MAX_LIN_DIC 200;
 #define COL_NUM_DATA 14
 #define COL_CAT_DATA 11
 
@@ -51,7 +50,6 @@ int NUM_LINHAS_LIDAS = 0;
 bool fimDoArq = true;
 
 vector<map<string, int>> buscaRapidaDeDado;
-
 
 void pairCodigoDescricao(string nomeArquivo, int indexDaColuna, int numLinhasLidas);
 
@@ -147,22 +145,43 @@ bool cudastrcmp(char s1[256], char s2[256]) {
     }
     return false;
 }
-/**/
-__global__
-void insercaoDeDados(dado* d_categoricos, mapa* d_dicDados, int lin, int col) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int colum = (index % col);
-    if (index < (lin*col)) {
-        for (int i = 0; i < 200; i++) {
-            if (d_dicDados[colum + (col * i)].id == 0) {
-                break;
-            }
 
-            if (cudastrcmp(d_dicDados[colum + (col*i)].d, d_categoricos[index].d)) {
-                d_categoricos[index].id = d_dicDados[colum + (col * i)].id;
-                break;
+__global__
+void insercaoDeDados(dado* d_categoricos, mapa* d_dicDados, int divisionTask, int numLinhasLidas, int totalCol) {
+    int TID = blockIdx.x * blockDim.x + threadIdx.x; //200
+
+    int inicioDaLinha = TID * divisionTask * totalCol;
+
+    if (inicioDaLinha < (numLinhasLidas*totalCol)) { // talvez seja maior ou igual
+
+        int numLinha = inicioDaLinha;
+
+        int contadorDeIteracoes = 0;
+        
+        while (numLinha < (numLinhasLidas*totalCol) && contadorDeIteracoes < divisionTask) {
+            
+            for (int valorDaColunaAtual = 0; valorDaColunaAtual < totalCol; valorDaColunaAtual++) {
+
+                int indexDoDado = numLinha + valorDaColunaAtual;
+                
+                for (int i = 0; i < 200; i++) {
+                    
+                    int posDoValorDicionario = valorDaColunaAtual + (totalCol * i);
+                    
+                    if (d_dicDados[posDoValorDicionario].id == 0) {
+                        break;
+                    }
+
+                    if (cudastrcmp(d_dicDados[posDoValorDicionario].d, d_categoricos[indexDoDado].d)) {
+                        d_categoricos[indexDoDado].id = d_dicDados[posDoValorDicionario].id;
+                        break;
+                    }
+                }
             }
+            numLinha += totalCol;
+            contadorDeIteracoes++;
         }
+
     }
 
 }
@@ -262,14 +281,15 @@ int main()
         
         int numBlock = getNumBlock(QNTD_LINHAS_LIDAS);
         int divisionTask = getDivisionTask(QNTD_LINHAS_LIDAS, cudaCore);
-        /*
+
         cout << "NumBlock: " << numBlock << endl;
         cout << "DivisionTask: " << divisionTask << endl;
-        */
+        cout << "TotalDeThreads: " << numBlock*128 << endl;
 
-        insercaoDeDados << <numBlock, 128>> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
 
-        cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
+        insercaoDeDados << <numBlock, 128>> > (d_categoricos, d_dicDados, divisionTask, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
+
+        cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * LIN, cudaMemcpyDeviceToHost);
 
         //printf("%s %d\n", categoricos[0][0].d, categoricos[0][0].id);
         
@@ -295,7 +315,7 @@ void exportaMatriz(int maxLinhas) {
         for (int j = 0; j < COL_CAT_DATA + COL_NUM_DATA; j++) {
             if (idxColuna.find(j) != idxColuna.end()) {
                 saida << to_string(categoricos[i][colunaCategorica].id) << ',';
-                //if(categoricos[i][colunaCategorica].id == 0) printf("%d\n", i);
+                //if(categoricos[i][colunaCategorica].id != 0) printf("%d\n", categoricos[i][colunaCategorica].id);
                 colunaCategorica++;
             }
             else
@@ -306,6 +326,7 @@ void exportaMatriz(int maxLinhas) {
 
             }
         }
+        //cout << "FIM DA LINHA" << endl;
         colunaNumerica = 0;
         colunaCategorica = 0;
     }
