@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "string"
-#include <cmath>
+#include <math.h>
 
 #include <chrono>
 #include <iostream> 
@@ -18,7 +18,7 @@
 #include <sstream>
 #include <vector>
 
-#define LIN 501
+#define LIN 1002
 #define MAX_LIN_DIC 200;
 #define COL_NUM_DATA 14
 #define COL_CAT_DATA 11
@@ -38,11 +38,10 @@ typedef struct {
 
 mapa dicDados[200][COL_CAT_DATA];
 
-
 using namespace std;
 
-vector<string> nomesArquivos = { "cdtup.csv", "berco.csv", "portoatracacao.csv", "mes.csv", "tipooperacao.csv",
-        "tiponavegacaoatracacao.csv", "terminal.csv", "origem.csv", "destino.csv", "naturezacarga.csv", "sentido.csv" };
+vector<string> nomesArquivos = { "cdtup.csv", "berco.csv", "portoatracacao.csv", "mes.csv", "tipooperacao.csv","tiponavegacaoatracacao.csv", "terminal.csv", "origem.csv", "destino.csv", "naturezacarga.csv", "sentido.csv" };
+
 map<int, string> idxColuna;
 
 fstream arquivoPrincipal;
@@ -137,7 +136,8 @@ void linhaInicial() {
 
 }
 
-__device__  bool cudastrcmp(char s1[256], char s2[256]) {
+__device__  
+bool cudastrcmp(char s1[256], char s2[256]) {
     int posChar = 0;
     while (s1[posChar] == s2[posChar]) {
         if (s1[posChar] == '\0' && s2[posChar] == '\0') {
@@ -149,25 +149,20 @@ __device__  bool cudastrcmp(char s1[256], char s2[256]) {
 }
 /**/
 __global__
-void insercaoDeDados(dado* mainDados, mapa* dicDados, int lin, int col) {
+void insercaoDeDados(dado* d_categoricos, mapa* d_dicDados, int lin, int col) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int colum = (index % col);
     if (index < (lin*col)) {
         for (int i = 0; i < 200; i++) {
-            if (dicDados[colum + (col * i)].id == 0) {
+            if (d_dicDados[colum + (col * i)].id == 0) {
                 break;
             }
 
-            if (cudastrcmp(dicDados[colum + (col*i)].d, mainDados[index].d)) {
-                mainDados[index].id = dicDados[colum + (col * i)].id;
+            if (cudastrcmp(d_dicDados[colum + (col*i)].d, d_categoricos[index].d)) {
+                d_categoricos[index].id = d_dicDados[colum + (col * i)].id;
                 break;
             }
-
-           
-
         }
-
-       // mainDados[index].id = colum;
     }
 
 }
@@ -178,6 +173,40 @@ void inicializaMatriz_buscaRapidaDeDado() {
         buscaRapidaDeDado.push_back(aux);
     }
 }
+
+int getNumBlock(int numLinhasLidas) {
+    //128 é numero de threads por bloco escolhido
+    int numBlock = ceil(numLinhasLidas / 128);
+    
+    if (numLinhasLidas % 128 != 0) {
+        numBlock++;
+    }
+
+    if (numBlock > 15) {
+        numBlock = 15;
+    }
+    
+    return numBlock;
+}
+
+int getDivisionTask(int numLinhasLidas, int cudaCore) {
+    int divisionTask = 0;
+
+    if (numLinhasLidas > cudaCore) {
+        
+        divisionTask = ceil(numLinhasLidas / cudaCore); // No mínimo 2
+        
+        if (numLinhasLidas % cudaCore != 0) {
+            divisionTask++;
+        }
+    }
+    else {
+        divisionTask = 1;
+    }
+
+    return divisionTask;
+}
+
 
 
 int main()
@@ -210,6 +239,10 @@ int main()
         }
     }
     */
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0); // 0 representa o ID do dispositivo, que pode variar se você tiver várias GPUs.
+    int cudaCore = prop.multiProcessorCount * 64;
+
     int QNTD_LINHAS_LIDAS;
     while(fimDoArq) {
         
@@ -226,8 +259,15 @@ int main()
         cudaMemcpy(d_categoricos, categoricos, sizeof(dado) * LIN * COL_CAT_DATA, cudaMemcpyHostToDevice);
         
         cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyHostToDevice);
-      
-        insercaoDeDados << <QNTD_LINHAS_LIDAS, COL_CAT_DATA >> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
+        
+        int numBlock = getNumBlock(QNTD_LINHAS_LIDAS);
+        int divisionTask = getDivisionTask(QNTD_LINHAS_LIDAS, cudaCore);
+        /*
+        cout << "NumBlock: " << numBlock << endl;
+        cout << "DivisionTask: " << divisionTask << endl;
+        */
+
+        insercaoDeDados << <numBlock, 128>> > (d_categoricos, d_dicDados, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
 
         cudaMemcpy(categoricos, d_categoricos, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyDeviceToHost);
 
@@ -245,10 +285,6 @@ int main()
     std::cout << "Tempo       : " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;    // Ending of parallel region 
 }
 
-
-
-
-//TROCAR DADOS NUMÉRICOS PARA CONVERSÃO DE INTEIRO PARA STRING
 void exportaMatriz(int maxLinhas) {
     int colunaNumerica = 0;
     int colunaCategorica = 0;
@@ -273,16 +309,10 @@ void exportaMatriz(int maxLinhas) {
         colunaNumerica = 0;
         colunaCategorica = 0;
     }
-    /*
-    if (fimDoArq) {
-        saida << "0\n";
-    }
-    */
 
     saida.close();
 }
-// se está no map ele devolve falso se não verdadeiro
-bool procuraNoCache(int indexDoArquivo, string dado) {
+bool buscaMap(int indexDoArquivo, string dado) {
     bool naoVectorEstaVazio = !buscaRapidaDeDado[indexDoArquivo].empty();
     if (naoVectorEstaVazio) {
         if (buscaRapidaDeDado[indexDoArquivo].find(dado) != buscaRapidaDeDado[indexDoArquivo].end()) {
@@ -291,7 +321,6 @@ bool procuraNoCache(int indexDoArquivo, string dado) {
     }
     return true;
 }
-
 
 void pairCodigoDescricao(string nomeArquivo, int indexDaColuna, int numLinhasLidas) {
     std::fstream arquivo;
@@ -304,7 +333,7 @@ void pairCodigoDescricao(string nomeArquivo, int indexDaColuna, int numLinhasLid
     
         string dado = categoricos[linha][indexDaColuna].d;
 
-        if (procuraNoCache(indexDaColuna, dado)) {
+        if (buscaMap(indexDaColuna, dado)) {
             
             int ultimoIndex = buscaRapidaDeDado[indexDaColuna].size() + 1;
             
