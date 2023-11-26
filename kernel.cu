@@ -18,9 +18,10 @@
 #include <sstream>
 #include <vector>
 
-#define LIN 1002
+#define LIN 100000
 #define COL_NUM_DATA 14
 #define COL_CAT_DATA 11
+#define MAX_LIN_DICIONARIO 2700
 
 typedef struct {
     int id;
@@ -35,7 +36,7 @@ typedef struct {
     char d[256];
 } mapa;
 
-mapa dicDados[200][COL_CAT_DATA];
+mapa dicDados[MAX_LIN_DICIONARIO][COL_CAT_DATA];
 
 using namespace std;
 
@@ -164,7 +165,7 @@ void insercaoDeDados(dado* d_categoricos, mapa* d_dicDados, int divisionTask, in
 
                 int indexDoDado = numLinha + valorDaColunaAtual;
                 
-                for (int i = 0; i < 200; i++) {
+                for (int i = 0; i < MAX_LIN_DICIONARIO; i++) {
                     
                     int posDoValorDicionario = valorDaColunaAtual + (totalCol * i);
                     
@@ -231,10 +232,12 @@ int getDivisionTask(int numLinhasLidas, int cudaCore) {
 int main()
 {
     auto start = std::chrono::steady_clock::now();
-
+     
+    limpaArquivo();
+    
     criarMapComNomeDaColunaAndPosicao();
 
-    arquivoPrincipal.open("dataset_00_1000_sem_virg.csv", fstream::in);
+    arquivoPrincipal.open("/content/drive/MyDrive/PPC2/dataset_00_sem_virg.csv", fstream::in);
 
     if (arquivoPrincipal.is_open() == false) {
         perror("Erro ao abrir o arquivo");
@@ -273,19 +276,19 @@ int main()
         
         cudaMalloc((void**)&d_categoricos, sizeof(dado) * LIN * COL_CAT_DATA);
         
-        cudaMalloc((void**)&d_dicDados, sizeof(mapa) * COL_CAT_DATA * 200);
+        cudaMalloc((void**)&d_dicDados, sizeof(mapa) * COL_CAT_DATA * MAX_LIN_DICIONARIO);
         
         cudaMemcpy(d_categoricos, categoricos, sizeof(dado) * LIN * COL_CAT_DATA, cudaMemcpyHostToDevice);
         
-        cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * 200, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dicDados, dicDados, sizeof(mapa) * COL_CAT_DATA * MAX_LIN_DICIONARIO, cudaMemcpyHostToDevice);
         
         int numBlock = getNumBlock(QNTD_LINHAS_LIDAS);
         int divisionTask = getDivisionTask(QNTD_LINHAS_LIDAS, cudaCore);
-
+        /*
         cout << "NumBlock: " << numBlock << endl;
         cout << "DivisionTask: " << divisionTask << endl;
         cout << "TotalDeThreads: " << numBlock*128 << endl;
-
+        */
 
         insercaoDeDados << <numBlock, 128>> > (d_categoricos, d_dicDados, divisionTask, QNTD_LINHAS_LIDAS, COL_CAT_DATA);
 
